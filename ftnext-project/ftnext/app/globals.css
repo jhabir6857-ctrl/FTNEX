@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-onyx text-steel font-body;
+  }
+  h1, h2, h3, h4 {
+    @apply text-chrome font-heading;
+  }
+  h1 {
+    @apply text-5xl font-bold; /* ~3.5rem, see spec Section 4 type scale */
+  }
+  h2 {
+    @apply text-4xl font-semibold; /* ~2.25rem */
+  }
+}
+
+/* Reduced motion: global safety net in addition to component-level checks
+   in lib/useReducedMotion.ts. See spec Section 6 and 9. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
