@@ -17,8 +17,20 @@ gsap.registerPlugin(ScrollTrigger);
 /* ─── Scroll distance ──────────────────────────────────────────────────── */
 const SCROLL_LENGTH = '500%'; // 5× viewport height of scroll runway
 
+interface ContentBlock {
+  readonly id: string;
+  readonly eyebrow: string;
+  readonly title: string;
+  readonly description: string;
+  readonly cta?: { readonly label: string; readonly href: string };
+  readonly fadeIn: number;
+  readonly holdStart: number;
+  readonly holdEnd: number;
+  readonly fadeOut: number;
+}
+
 /* ─── Content block data ───────────────────────────────────────────────── */
-const CONTENT_BLOCKS = [
+const CONTENT_BLOCKS: readonly ContentBlock[] = [
   {
     id: 'aerospace',
     eyebrow: '01',
@@ -56,7 +68,7 @@ const CONTENT_BLOCKS = [
     holdEnd: 0.90,
     fadeOut: 0.97,
   },
-] as const;
+];
 
 /**
  * Drone-Tracking Journey — Cinematic scroll-scrubbed hero.
@@ -169,11 +181,18 @@ export function ScrollCanvas() {
     []
   );
 
+  // Track active ScrollTrigger and animation timelines for explicit unmount cleanup
+  const scrollTriggerRef = useRef<ScrollTrigger | null>(null);
+  const timelinesRef = useRef<gsap.core.Timeline[]>([]);
+  const isMountedRef = useRef<boolean>(true);
+
   useGSAP(
     () => {
+      isMountedRef.current = true;
       if (!containerRef.current || !canvasRef.current) return;
 
       const container = containerRef.current;
+      let resizeCleanup: (() => void) | null = null;
 
       // ── Phase 1: Preload first PRELOAD_COUNT frames ───────────────────
       const preloadPromises: Promise<HTMLImageElement | null>[] = [];
@@ -182,6 +201,9 @@ export function ScrollCanvas() {
       }
 
       Promise.all(preloadPromises).then(() => {
+        // If component unmounted while preloading, abort setup immediately
+        if (!isMountedRef.current || !containerRef.current) return;
+
         setReady(true);
 
         // Draw the first frame immediately
@@ -190,7 +212,7 @@ export function ScrollCanvas() {
         // ── Phase 2: Lazily load remaining frames in background ─────────
         let loadIndex = PRELOAD_COUNT;
         const loadNext = () => {
-          if (loadIndex >= TOTAL_FRAMES) return;
+          if (!isMountedRef.current || loadIndex >= TOTAL_FRAMES) return;
           loadFrame(loadIndex).then(() => {
             loadIndex++;
             if ('requestIdleCallback' in window) {
@@ -203,7 +225,7 @@ export function ScrollCanvas() {
         loadNext();
 
         // ── Phase 3: ScrollTrigger — canvas frame scrub ─────────────────
-        ScrollTrigger.create({
+        scrollTriggerRef.current = ScrollTrigger.create({
           trigger: container,
           start: 'top top',
           end: `+=${SCROLL_LENGTH}`,
@@ -259,6 +281,8 @@ export function ScrollCanvas() {
             },
             block.holdEnd
           );
+
+          timelinesRef.current.push(tl);
         });
 
         // ── Resize handler ──────────────────────────────────────────────
@@ -274,8 +298,25 @@ export function ScrollCanvas() {
         };
 
         window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
+        resizeCleanup = () => window.removeEventListener('resize', handleResize);
       });
+
+      // Explicit cleanup returned from useGSAP
+      return () => {
+        isMountedRef.current = false;
+        if (resizeCleanup) {
+          resizeCleanup();
+        }
+        // Kill child timelines
+        timelinesRef.current.forEach((tl) => tl.kill());
+        timelinesRef.current = [];
+
+        // Kill ScrollTrigger and revert DOM changes (removes .pin-spacer without orphaning)
+        if (scrollTriggerRef.current) {
+          scrollTriggerRef.current.kill(true);
+          scrollTriggerRef.current = null;
+        }
+      };
     },
     { scope: containerRef }
   );
